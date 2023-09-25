@@ -12,6 +12,9 @@ pub enum Token<'a> {
     ReturnKeyword,
     Identifier(&'a str),
     IntegerLiteral(&'a str),
+    Negation,
+    BitwiseComplement,
+    LogicalNegation,
 }
 
 static INTEGER_REGEX: &str = r"^([0-9]+)((.|\s)*)";
@@ -50,6 +53,9 @@ fn lex_rest(chars: &[u8]) -> Vec<Token> {
         [b'(', rest @ ..] => vec![Token::OpenParenthesis].into_iter().chain(lex_rest(rest)).collect(),
         [b')', rest @ ..] => vec![Token::CloseParenthesis].into_iter().chain(lex_rest(rest)).collect(),
         [b';', rest @ ..] => vec![Token::Semicolon].into_iter().chain(lex_rest(rest)).collect(),
+        [b'-', rest @ ..] => vec![Token::Negation].into_iter().chain(lex_rest(rest)).collect(),
+        [b'~', rest @ ..] => vec![Token::BitwiseComplement].into_iter().chain(lex_rest(rest)).collect(),    
+        [b'!', rest @ ..] => vec![Token::LogicalNegation].into_iter().chain(lex_rest(rest)).collect(),
         [c, rest @ ..] => if c.is_ascii_whitespace() {
             lex_rest(rest)
         } else {

@@ -1,13 +1,34 @@
-use crate::ast::{Program, TopLevel, TypeDef, Statement, Expression, Const};
+use crate::ast::{Program, TopLevel, TypeDef, Statement, Expression, Const, UnaryOp};
+
+fn generate_const_expression(c: &Const) -> String {
+    match c {
+        Const::Int(i) => format!("\tmov\t${}, %rax\n", i)
+    }
+}
+
+fn generate_unary_operation_expression(op: &UnaryOp, exp: &Expression) -> String {
+    let l = match op {
+        UnaryOp::Negate => String::from("\tneg\t%rax\n"),
+        UnaryOp::Complement => String::from("\tnot\t%rax\n"),
+        UnaryOp::Not => {
+            let l1 = String::from("\tcmp\t$0, %rax\n");
+            let l2 = String::from("\tmov\t$0, %rax\n");
+            let l3 = String::from("\tsete\t%al\n");
+            l1 + &l2 + &l3
+        }
+    };
+    generate_expression(exp) + &l
+}
+
+fn generate_expression(exp: &Expression) -> String {
+    match exp {
+        Expression::ConstExpression(c) => generate_const_expression(c),
+        Expression::UnaryOp(op, exp) => generate_unary_operation_expression(op, exp)
+    }
+}
 
 fn generate_return_val(exp: &Expression) -> String {
-    match exp {
-        Expression::ConstExpression(Const::Int(i)) => {
-            let l1 = format!("\tmovl\t${}, %eax\n", i);
-            let l2 = format!("\tret\n");
-            l1 + &l2
-        }
-    }
+    generate_expression(exp) + "\tret\n"
 }
 
 fn generate_statement(statement: &Statement) -> String {

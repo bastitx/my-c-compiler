@@ -12,8 +12,17 @@ pub enum Const {
 
 #[derive(Clone)]
 #[derive(Debug)]
-pub enum Expression {
-    ConstExpression(Const)
+pub enum UnaryOp {
+    Negate,
+    Complement,
+    Not,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub enum Expression{
+    ConstExpression(Const),
+    UnaryOp(UnaryOp, Box<Expression>),
 }
 
 #[derive(Clone)]
