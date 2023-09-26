@@ -11,7 +11,7 @@ fn main() {
     let input = if args.len() == 2 {
         fs::read_to_string(&args[1]).unwrap()
     } else {
-        "int main(){\nreturn 42; }".to_string()
+        "int main(){\nreturn ~2 + 3; }".to_string()
     };
     let tokens = lexer::lex(input.as_str());
     // println!("{:?}", tokens);

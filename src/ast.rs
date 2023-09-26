@@ -20,9 +20,19 @@ pub enum UnaryOp {
 
 #[derive(Clone)]
 #[derive(Debug)]
+pub enum BinaryOp {
+    Addition,
+    Subtraction,
+    Multiplication,
+    Division,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
 pub enum Expression{
     ConstExpression(Const),
     UnaryOp(UnaryOp, Box<Expression>),
+    BinaryOp(BinaryOp, Box<Expression>, Box<Expression>),
 }
 
 #[derive(Clone)]

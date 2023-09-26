@@ -15,6 +15,9 @@ pub enum Token<'a> {
     Negation,
     BitwiseComplement,
     LogicalNegation,
+    Addition,
+    Multiplication,
+    Division,
 }
 
 static INTEGER_REGEX: &str = r"^([0-9]+)((.|\s)*)";
@@ -56,6 +59,9 @@ fn lex_rest(chars: &[u8]) -> Vec<Token> {
         [b'-', rest @ ..] => vec![Token::Negation].into_iter().chain(lex_rest(rest)).collect(),
         [b'~', rest @ ..] => vec![Token::BitwiseComplement].into_iter().chain(lex_rest(rest)).collect(),    
         [b'!', rest @ ..] => vec![Token::LogicalNegation].into_iter().chain(lex_rest(rest)).collect(),
+        [b'+', rest @ ..] => vec![Token::Addition].into_iter().chain(lex_rest(rest)).collect(),
+        [b'*', rest @ ..] => vec![Token::Multiplication].into_iter().chain(lex_rest(rest)).collect(),
+        [b'/', rest @ ..] => vec![Token::Division].into_iter().chain(lex_rest(rest)).collect(),
         [c, rest @ ..] => if c.is_ascii_whitespace() {
             lex_rest(rest)
         } else {

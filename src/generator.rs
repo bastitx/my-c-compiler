@@ -1,4 +1,4 @@
-use crate::ast::{Program, TopLevel, TypeDef, Statement, Expression, Const, UnaryOp};
+use crate::ast::{Program, TopLevel, TypeDef, Statement, Expression, Const, UnaryOp, BinaryOp};
 
 fn generate_const_expression(c: &Const) -> String {
     match c {
@@ -20,10 +20,29 @@ fn generate_unary_operation_expression(op: &UnaryOp, exp: &Expression) -> String
     generate_expression(exp) + &l
 }
 
+fn generate_binary_operation_expression(op: &BinaryOp, exp1: &Expression, exp2: &Expression) -> String {
+    let gen_exp2 = generate_expression(exp2);
+    let push_exp2 = String::from("\tpush\t%rax\n");
+    let gen_exp1 = generate_expression(exp1);
+    let pop_exp2 = String::from("\tpop\t%rcx\n");
+    let operation = match op {
+        BinaryOp::Addition => String::from("\tadd\t%rcx, %rax\n"),
+        BinaryOp::Multiplication => String::from("\timul\t%rcx, %rax\n"),
+        BinaryOp::Subtraction => String::from("\tsub\t%rcx, %rax\n"),
+        BinaryOp::Division => {
+            let l1 = String::from("\tcqo\n"); // convert doubleword
+            let l2 = String::from("\tidiv\t%rcx\n");
+            l1 + &l2
+        },
+    };
+    gen_exp2 + &push_exp2 + &gen_exp1 + &pop_exp2 + &operation
+}
+
 fn generate_expression(exp: &Expression) -> String {
     match exp {
         Expression::ConstExpression(c) => generate_const_expression(c),
-        Expression::UnaryOp(op, exp) => generate_unary_operation_expression(op, exp)
+        Expression::UnaryOp(op, exp) => generate_unary_operation_expression(op, exp),
+        Expression::BinaryOp(op, exp1, exp2) => generate_binary_operation_expression(op, exp1, exp2),
     }
 }
 
