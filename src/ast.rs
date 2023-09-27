@@ -38,6 +38,7 @@ pub enum Expression{
     ConstExpression(Const),
     UnaryOp(UnaryOp, Box<Expression>),
     BinaryOp(BinaryOp, Box<Expression>, Box<Expression>),
+    Conditional(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
 #[derive(Clone, Debug)]

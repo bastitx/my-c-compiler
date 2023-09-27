@@ -120,6 +120,21 @@ fn generate_var_reference(var_name: &str, context: &Context) -> String {
     format!("\tmovq\t{}(%rbp), %rax\n", offset)
 }
 
+fn generate_conditional_expression(exp1: &Expression, exp2: &Expression, exp3: &Expression, context: &Context) -> String {
+    let label_else = context.get_and_increase_label();
+    let label_end = context.get_and_increase_label();
+    [
+        generate_expression(exp1, context),
+        String::from("\tcmpq\t$0, %rax\n"),
+        format!("\tje\t{}\n", label_else),
+        generate_expression(exp2, context),
+        format!("\tjmp\t{}\n", label_end),
+        format!("{}:\n", label_else),
+        generate_expression(exp3, context),
+        format!("{}:\n", label_end),
+    ].join("")
+}
+
 fn generate_expression(exp: &Expression, context: &Context) -> String {
     match exp {
         Expression::ConstExpression(c) => generate_const_expression(c),
@@ -134,7 +149,8 @@ fn generate_expression(exp: &Expression, context: &Context) -> String {
             generate_binary_operation_expression(op, exp1, exp2, context)
         },
         Expression::Assign(name, exp) => generate_var_assignment(name, exp, context),
-        Expression::Var(name) => generate_var_reference(name, context)
+        Expression::Var(name) => generate_var_reference(name, context),
+        Expression::Conditional(exp1, exp2, exp3) => generate_conditional_expression(exp1, exp2, exp3, context),
     }
 }
 

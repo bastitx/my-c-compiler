@@ -90,13 +90,30 @@ fn parse_logical_or_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, 
     parse_binary_expression(&[Token::LogicalOr], &parse_logical_and_expression)(tokens)
 }
 
+fn parse_conditional_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    let (exp1, rest) = parse_logical_or_expression(tokens);
+    match rest {
+        [Token::QuestionMark, rest @ ..] => {
+            let (exp2, rest) = parse_expression(rest);
+            match rest {
+                [Token::Colon, rest @ ..] => {
+                    let (exp3, rest) = parse_conditional_expression(rest);
+                    (ast::Expression::Conditional(Box::new(exp1), Box::new(exp2), Box::new(exp3)), rest)
+                },
+                _ => panic!("Expected colon")
+            }
+        }
+        _ => (exp1, rest)
+    }
+}
+
 fn parse_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
     match tokens {
         [Token::Identifier(name), Token::Assignment, rest @ ..] => {
             let (exp, rest) = parse_expression(rest);
             (ast::Expression::Assign(name.to_string(), Box::from(exp)), rest)
         }
-        tokens => parse_logical_or_expression(tokens)
+        tokens => parse_conditional_expression(tokens)
     }
 }
 
