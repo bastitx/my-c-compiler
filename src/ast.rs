@@ -43,8 +43,14 @@ pub enum Expression{
 #[derive(Clone, Debug)]
 pub enum Statement {
     ExpressionStatement(Expression),
+    ReturnVal(Expression),
+    Conditional(Expression, Box<Statement>, Option<Box<Statement>>),
+}
+
+#[derive(Clone, Debug)]
+pub enum BlockItem {
     Declaration(String, Option<Expression>), // Optional Expression is initialization
-    ReturnVal(Expression)
+    Statement(Statement),
 }
 
 #[derive(Clone, Debug)]
@@ -52,7 +58,7 @@ pub enum TopLevel {
     Function {
         fun_type: TypeDef,
         name: String,
-        body: Vec<Statement>
+        body: Vec<BlockItem>
     }
 }
 

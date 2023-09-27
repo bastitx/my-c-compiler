@@ -1,4 +1,4 @@
-use crate::ast::{self, BinaryOp, Expression};
+use crate::ast::{self, BinaryOp, Expression, BlockItem};
 use crate::lexer::Token;
 
 fn parse_factor<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
@@ -108,19 +108,21 @@ fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>
                 [Token::Semicolon, rest @ ..] => (ast::Statement::ReturnVal(exp), rest),
                 _ => panic!("Didn't find semi colon")
             }
-            
         },
-        [Token::IntKeyword, Token::Identifier(name), rest @ ..] => {
+        [Token::IfKeyword, Token::OpenParenthesis, rest @ ..] => {
+            let (exp, rest) = parse_expression(rest);
             match rest {
-                [Token::Semicolon, rest @ ..] => (ast::Statement::Declaration(name.to_string(), None), rest),
-                [Token::Assignment, rest @ ..] => {
-                    let (exp, rest) = parse_expression(rest);
-                    match rest {
-                        [Token::Semicolon, rest @ ..] => (ast::Statement::Declaration(name.to_string(), Some(exp)), rest),
-                        _ => panic!("Didn't find semi colon")
-                    }
-                },
-                _ => panic!("Incorrect declaration")
+                [Token::CloseParenthesis, rest @ ..] => {
+                    let (statement, rest) = parse_statement(rest);
+                    let (else_statement, rest) = if let [Token::ElseKeyword, rest @ ..] = rest {
+                        let (else_statement, rest) = parse_statement(rest);
+                        (Some(Box::new(else_statement)), rest)
+                    } else {
+                        (None, rest)
+                    };
+                    (ast::Statement::Conditional(exp, Box::new(statement), else_statement), rest)
+                }
+                _ => panic!("Didn't find closing parenthesis")
             }
         },
         tokens => {
@@ -133,22 +135,44 @@ fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>
     }
 }
 
-fn parse_block_items<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::Statement>, &'a[Token<'a>]) {
-    if let Some(Token::CloseBrace) = tokens.first() {
-        (vec![], tokens)
-    } else {
-        let (next_statement, rest) = parse_statement(tokens);
-        let (statements, rest) = parse_block_items(rest);
-        (vec![next_statement].into_iter().chain(statements).collect(), rest)
+fn parse_block_item<'a>(tokens: &'a[Token<'a>]) -> (ast::BlockItem, &'a[Token<'a>]) {
+    match tokens {
+        [Token::IntKeyword, Token::Identifier(name), rest @ ..] => {
+            match rest {
+                [Token::Semicolon, rest @ ..] => (ast::BlockItem::Declaration(name.to_string(), None), rest),
+                [Token::Assignment, rest @ ..] => {
+                    let (exp, rest) = parse_expression(rest);
+                    match rest {
+                        [Token::Semicolon, rest @ ..] => (ast::BlockItem::Declaration(name.to_string(), Some(exp)), rest),
+                        _ => panic!("Didn't find semi colon")
+                    }
+                },
+                _ => panic!("Incorrect declaration")
+            }
+        },
+        _ => {
+            let (statement, rest) = parse_statement(tokens);
+            (BlockItem::Statement(statement), rest)
+        }
     }
 }
 
-fn parse_block<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::Statement>, &'a[Token<'a>]) {
+fn parse_block_items<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::BlockItem>, &'a[Token<'a>]) {
+    if let Some(Token::CloseBrace) = tokens.first() {
+        (vec![], tokens)
+    } else {
+        let (next_block_item, rest) = parse_block_item(tokens);
+        let (block_items, rest) = parse_block_items(rest);
+        (vec![next_block_item].into_iter().chain(block_items).collect(), rest)
+    }
+}
+
+fn parse_block<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::BlockItem>, &'a[Token<'a>]) {
     match tokens {
         [Token::OpenBrace, rest @ ..] => {
-            let (statements, rest) = parse_block_items(rest);
+            let (block_items, rest) = parse_block_items(rest);
             match rest {
-                [Token::CloseBrace, rest @ ..] => (statements, rest),
+                [Token::CloseBrace, rest @ ..] => (block_items, rest),
                 _ => panic!("Expected closing brace at end of block")
             }
         },

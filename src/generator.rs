@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Const, Expression, Program, Statement, TopLevel, TypeDef, UnaryOp};
+use crate::ast::{BinaryOp, Const, Expression, Program, Statement, TopLevel, TypeDef, UnaryOp, BlockItem};
 use context::Context;
 
 pub mod context;
@@ -158,29 +158,51 @@ fn generate_var_declaration(var_name: &str, exp: &Option<Expression>, context: &
     [init, String::from("\tpushq\t%rax\n")].join("")
 }
 
+fn generate_if_else(exp: &Expression, if_statement: &Box<Statement>, else_statement: &Option<Box<Statement>>, context: &Context) -> String {
+    let label_else = context.get_and_increase_label();
+    let label_end = context.get_and_increase_label();
+    [
+        generate_expression(exp, context),
+        String::from("\tcmpq\t$0, %rax\n"),
+        format!("\tje\t{}\n", label_else),
+        generate_statement(if_statement, context),
+        format!("\tjmp\t{}\n", label_end),
+        format!("{}:\n", label_else),
+        else_statement.as_ref().and_then(|x| Some(generate_statement(x, context))).unwrap_or(String::new()),
+        format!("{}:\n", label_end),
+    ].join("")
+}
+
 fn generate_statement(statement: &Statement, context: &Context) -> String {
     match statement {
         Statement::ReturnVal(exp) => generate_return_val(exp, context),
-        Statement::Declaration(name, exp) => generate_var_declaration(name, exp, context),
-        Statement::ExpressionStatement(exp) => generate_expression(exp, context)
+        Statement::ExpressionStatement(exp) => generate_expression(exp, context),
+        Statement::Conditional(exp, if_statement, else_statement) => generate_if_else(exp, if_statement, else_statement, context)
     }
 }
 
-fn generate_function_body(body: &[Statement], context: &Context) -> String {
-    let body = if let Some(Statement::ReturnVal(_)) = body.last() {
+fn generate_block_item(block_item: &BlockItem, context: &Context) -> String {
+    match block_item {
+        BlockItem::Declaration(name, exp) => generate_var_declaration(name, exp, context),
+        BlockItem::Statement(statement) => generate_statement(statement, context)
+    }
+}
+
+fn generate_function_body(body: &[BlockItem], context: &Context) -> String {
+    let body = if let Some(BlockItem::Statement(Statement::ReturnVal(_))) = body.last() {
         body.to_vec()
     } else {
-        [body, &[Statement::ReturnVal(Expression::ConstExpression(Const::Int(0)))]].concat()
+        [body, &[BlockItem::Statement(Statement::ReturnVal(Expression::ConstExpression(Const::Int(0))))]].concat()
     };
     body.into_iter().fold(String::new(), |acc, x| {
-        acc + &generate_statement(&x, context)
+        acc + &generate_block_item(&x, context)
     })
 }
 
 fn generate_function(
     _: &TypeDef,
     name: &String,
-    body: &Vec<Statement>,
+    body: &Vec<BlockItem>,
     context: &Context,
 ) -> String {
     [
