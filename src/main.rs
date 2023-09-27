@@ -11,8 +11,9 @@ fn main() {
     let input = if args.len() == 2 {
         fs::read_to_string(&args[1]).unwrap()
     } else {
-        "int main(){\nreturn 1 && 0; }".to_string()
+        "int main(){\nreturn 2; }".to_string()
     };
+    // println!("{}", input);
     let tokens = lexer::lex(input.as_str());
     // println!("{:?}", tokens);
     let ast = parser::parse(tokens);

@@ -1,25 +1,21 @@
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TypeDef {
     IntType
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Const {
     Int(u32)
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UnaryOp {
     Negate,
     Complement,
     Not,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BinaryOp {
     Addition,
     Subtraction,
@@ -35,23 +31,23 @@ pub enum BinaryOp {
     GreaterThanOrEqualTo,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expression{
+    Assign(String, Box<Expression>), // Box needed because of recursion
+    Var(String),
     ConstExpression(Const),
     UnaryOp(UnaryOp, Box<Expression>),
     BinaryOp(BinaryOp, Box<Expression>, Box<Expression>),
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Statement {
     ExpressionStatement(Expression),
+    Declaration(String, Option<Expression>), // Optional Expression is initialization
     ReturnVal(Expression)
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TopLevel {
     Function {
         fun_type: TypeDef,
@@ -60,8 +56,7 @@ pub enum TopLevel {
     }
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Program {
     pub block: Vec<TopLevel>
 }

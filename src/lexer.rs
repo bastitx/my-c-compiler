@@ -25,6 +25,7 @@ pub enum Token<'a> {
     LessThanOrEqualTo,
     GreaterThan,
     GreaterThanOrEqualTo,
+    Assignment,
 }
 
 static INTEGER_REGEX: &str = r"^([0-9]+)((.|\s)*)";
@@ -65,6 +66,7 @@ fn lex_rest(chars: &[u8]) -> Vec<Token> {
         [b';', rest @ ..] => vec![Token::Semicolon].into_iter().chain(lex_rest(rest)).collect(),
         [b'!', b'=', rest @ ..] => vec![Token::NotEqualTo].into_iter().chain(lex_rest(rest)).collect(),
         [b'=', b'=', rest @ ..] => vec![Token::EqualTo].into_iter().chain(lex_rest(rest)).collect(),
+        [b'=', rest @ ..] => vec![Token::Assignment].into_iter().chain(lex_rest(rest)).collect(),
         [b'-', rest @ ..] => vec![Token::Negation].into_iter().chain(lex_rest(rest)).collect(),
         [b'~', rest @ ..] => vec![Token::BitwiseComplement].into_iter().chain(lex_rest(rest)).collect(),    
         [b'!', rest @ ..] => vec![Token::LogicalNegation].into_iter().chain(lex_rest(rest)).collect(),

@@ -21,7 +21,9 @@ fn parse_factor<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>])
                 _ => panic!("Didn't find semi colon")
             }
         },
-        _ => panic!("Unknown Expression")
+        [Token::Identifier(name), rest @ ..] => (ast::Expression::Var(name.to_string()), rest),
+        [t, ..] => panic!("Unknown Expression {:?}", t),
+        [] => panic!("Unexpected end of file")
     }
 }
 
@@ -84,8 +86,18 @@ fn parse_logical_and_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression,
     parse_binary_expression(&[Token::LogicalAnd], &parse_equality_expression)(tokens)
 }
 
-fn parse_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+fn parse_logical_or_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
     parse_binary_expression(&[Token::LogicalOr], &parse_logical_and_expression)(tokens)
+}
+
+fn parse_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    match tokens {
+        [Token::Identifier(name), Token::Assignment, rest @ ..] => {
+            let (exp, rest) = parse_expression(rest);
+            (ast::Expression::Assign(name.to_string(), Box::from(exp)), rest)
+        }
+        tokens => parse_logical_or_expression(tokens)
+    }
 }
 
 fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
@@ -98,7 +110,26 @@ fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>
             }
             
         },
-        tokens => panic!("Statement {:?} not supported", tokens)
+        [Token::IntKeyword, Token::Identifier(name), rest @ ..] => {
+            match rest {
+                [Token::Semicolon, rest @ ..] => (ast::Statement::Declaration(name.to_string(), None), rest),
+                [Token::Assignment, rest @ ..] => {
+                    let (exp, rest) = parse_expression(rest);
+                    match rest {
+                        [Token::Semicolon, rest @ ..] => (ast::Statement::Declaration(name.to_string(), Some(exp)), rest),
+                        _ => panic!("Didn't find semi colon")
+                    }
+                },
+                _ => panic!("Incorrect declaration")
+            }
+        },
+        tokens => {
+            let (exp, rest) = parse_expression(tokens);
+            match rest {
+                [Token::Semicolon, rest @ ..] => (ast::Statement::ExpressionStatement(exp), rest),
+                _ => panic!("Didn't find semi colon")
+            }
+        }
     }
 }
 
