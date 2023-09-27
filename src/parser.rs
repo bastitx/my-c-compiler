@@ -31,6 +31,14 @@ fn token_to_binary_op(token: &Token) -> BinaryOp {
         Token::Negation => BinaryOp::Subtraction,
         Token::Multiplication => BinaryOp::Multiplication,
         Token::Division => BinaryOp::Division,
+        Token::EqualTo => BinaryOp::EqualTo,
+        Token::NotEqualTo => BinaryOp::NotEqualTo,
+        Token::LogicalAnd => BinaryOp::LogicalAnd,
+        Token::LogicalOr => BinaryOp::LogicalOr,
+        Token::LessThan => BinaryOp::LessThan,
+        Token::LessThanOrEqualTo => BinaryOp::LessThanOrEqualTo,
+        Token::GreaterThan => BinaryOp::GreaterThan,
+        Token::GreaterThanOrEqualTo => BinaryOp::GreaterThanOrEqualTo,
         _ => panic!("Token not a binary operation")
     }
 }
@@ -59,8 +67,25 @@ fn parse_term<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
     parse_binary_expression(&[Token::Multiplication, Token::Division], &parse_factor)(tokens)
 }
 
-fn parse_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+fn parse_additive_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
     parse_binary_expression(&[Token::Addition, Token::Negation], &parse_term)(tokens)
+
+}
+
+fn parse_relational_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    parse_binary_expression(&[Token::LessThan, Token::LessThanOrEqualTo, Token::GreaterThan, Token::GreaterThanOrEqualTo], &parse_additive_expression)(tokens)
+}
+
+fn parse_equality_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    parse_binary_expression(&[Token::EqualTo, Token::NotEqualTo], &parse_relational_expression)(tokens)
+}
+
+fn parse_logical_and_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    parse_binary_expression(&[Token::LogicalAnd], &parse_equality_expression)(tokens)
+}
+
+fn parse_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    parse_binary_expression(&[Token::LogicalOr], &parse_logical_and_expression)(tokens)
 }
 
 fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {

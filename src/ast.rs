@@ -25,6 +25,14 @@ pub enum BinaryOp {
     Subtraction,
     Multiplication,
     Division,
+    EqualTo,
+    NotEqualTo,
+    LogicalAnd,
+    LogicalOr,
+    LessThan,
+    LessThanOrEqualTo,
+    GreaterThan,
+    GreaterThanOrEqualTo,
 }
 
 #[derive(Clone)]
