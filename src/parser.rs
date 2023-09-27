@@ -1,23 +1,23 @@
 use crate::ast::{self, BinaryOp, Expression};
 use crate::lexer::Token;
 
-fn parse_factor(tokens: Vec<Token>) -> (ast::Expression, Vec<Token>) {
-    match tokens.as_slice() {
-        [Token::IntegerLiteral(i), rest @ ..] => (ast::Expression::ConstExpression(ast::Const::Int(i.parse::<u32>().unwrap())), rest.to_vec()),
+fn parse_factor<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    match tokens {
+        [Token::IntegerLiteral(i), rest @ ..] => (ast::Expression::ConstExpression(ast::Const::Int(i.parse::<u32>().unwrap())), rest),
         [un_op @ (Token::BitwiseComplement | Token::LogicalNegation | Token:: Negation), rest @ ..] => {
-            let (exp, rest) = parse_factor(rest.to_vec());
+            let (exp, rest) = parse_factor(rest);
             let un_op = match un_op {
                 Token::BitwiseComplement => ast::UnaryOp::Complement,
                 Token::LogicalNegation => ast::UnaryOp::Not,
                 Token::Negation => ast::UnaryOp::Negate,
                 _ => panic!("Should not happen")
             };
-            (ast::Expression::UnaryOp(un_op, Box::new(exp)), rest.to_vec())
+            (ast::Expression::UnaryOp(un_op, Box::new(exp)), rest)
         },
         [Token::OpenParenthesis, rest @ ..] => {
-            let (exp, rest) = parse_expression(rest.to_vec());
-            match rest.as_slice() {
-                [Token::CloseParenthesis, rest @ ..] => (exp, rest.to_vec()),
+            let (exp, rest) = parse_expression(rest);
+            match rest {
+                [Token::CloseParenthesis, rest @ ..] => (exp, rest),
                 _ => panic!("Didn't find semi colon")
             }
         },
@@ -25,56 +25,50 @@ fn parse_factor(tokens: Vec<Token>) -> (ast::Expression, Vec<Token>) {
     }
 }
 
-fn parse_term_with_factor(factor1: Expression, tokens: Vec<Token>) -> (ast::Expression, Vec<Token>) {
-    match tokens.as_slice() {
-        [t @ (Token::Multiplication | Token::Division), rest @ ..] => {
-            let (factor2, rest) = parse_factor(rest.to_vec());
-            let op = match t {
-                Token::Multiplication => BinaryOp::Multiplication,
-                Token::Division => BinaryOp::Division,
-                _ => panic!("Should not happen")
-            };
-            let exp = ast::Expression::BinaryOp(op, Box::new(factor1), Box::new(factor2));
-            let (exp, rest) = parse_term_with_factor(exp, rest.to_vec());
-            (exp, rest.to_vec())
-        }
-        _ => (factor1, tokens)
+fn token_to_binary_op(token: &Token) -> BinaryOp {
+    match token {
+        Token::Addition => BinaryOp::Addition,
+        Token::Negation => BinaryOp::Subtraction,
+        Token::Multiplication => BinaryOp::Multiplication,
+        Token::Division => BinaryOp::Division,
+        _ => panic!("Token not a binary operation")
     }
 }
 
-fn parse_term(tokens: Vec<Token>) -> (ast::Expression, Vec<Token>) {
-    let (factor1, rest) = parse_factor(tokens);
-    parse_term_with_factor(factor1, rest)
-}
-
-fn parse_expression_with_term(term1: Expression, tokens: Vec<Token>) -> (ast::Expression, Vec<Token>) {
-    match tokens.as_slice() {
-        [t @ (Token::Addition | Token::Negation), rest @ ..] => {
-            let (term2, rest) = parse_term(rest.to_vec());
-            let op = match t {
-                Token::Addition => BinaryOp::Addition,
-                Token::Negation => BinaryOp::Subtraction,
-                _ => panic!("Should not happen")
-            };
-            let exp = ast::Expression::BinaryOp(op, Box::new(term1), Box::new(term2));
-            let (exp, rest) = parse_expression_with_term(exp, rest.to_vec());
-            (exp, rest.to_vec())
+fn parse_binary_expression<'a>(op_tokens: &'a[Token<'a>], next_level: &'a dyn Fn(&'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>])) -> Box<dyn Fn(&'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) + 'a> {
+    let parse_expression_fn = move | tokens: &'a[Token<'a>] | -> (ast::Expression, &'a[Token<'a>]) {
+        let (term1, rest) = next_level(tokens);
+        fn parse_binary_expression_with_expression<'a>(op_tokens: &'a[Token<'a>], next_level: &dyn Fn(&'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]), exp1:  Expression, tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+            match tokens {
+                [t , rest @ ..] if op_tokens.contains(t) => {
+                    let (exp2, rest) = next_level(rest);
+                    let op = token_to_binary_op(t);
+                    let exp = ast::Expression::BinaryOp(op, Box::new(exp1), Box::new(exp2));
+                    let (exp, rest) = parse_binary_expression_with_expression(op_tokens, next_level, exp, rest);
+                    (exp, &rest)
+                }
+                _ => (exp1, tokens)
+            }
         }
-        _ => (term1, tokens)
-    }
+        parse_binary_expression_with_expression(op_tokens, next_level, term1, rest)
+    };
+    Box::new(parse_expression_fn)
 }
 
-fn parse_expression(tokens: Vec<Token>) -> (ast::Expression, Vec<Token>) {
-    let (term1, rest) = parse_term(tokens);
-    parse_expression_with_term(term1, rest)
+fn parse_term<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    parse_binary_expression(&[Token::Multiplication, Token::Division], &parse_factor)(tokens)
 }
 
-fn parse_statement(tokens: Vec<Token>) -> (ast::Statement, Vec<Token>) {
-    match tokens.as_slice() {
+fn parse_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    parse_binary_expression(&[Token::Addition, Token::Negation], &parse_term)(tokens)
+}
+
+fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
+    match tokens {
         [Token::ReturnKeyword, rest @ ..] => {
-            let (exp, rest) = parse_expression(rest.to_vec());
-            match rest.as_slice() {
-                [Token::Semicolon, rest @ ..] => (ast::Statement::ReturnVal(exp), rest.to_vec()),
+            let (exp, rest) = parse_expression(rest);
+            match rest {
+                [Token::Semicolon, rest @ ..] => (ast::Statement::ReturnVal(exp), rest),
                 _ => panic!("Didn't find semi colon")
             }
             
@@ -83,7 +77,7 @@ fn parse_statement(tokens: Vec<Token>) -> (ast::Statement, Vec<Token>) {
     }
 }
 
-fn parse_block_items(tokens: Vec<Token>) -> (Vec<ast::Statement>, Vec<Token>) {
+fn parse_block_items<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::Statement>, &'a[Token<'a>]) {
     if let Some(Token::CloseBrace) = tokens.first() {
         (vec![], tokens)
     } else {
@@ -93,12 +87,12 @@ fn parse_block_items(tokens: Vec<Token>) -> (Vec<ast::Statement>, Vec<Token>) {
     }
 }
 
-fn parse_block(tokens: Vec<Token>) -> (Vec<ast::Statement>, Vec<Token>) {
-    match tokens.as_slice() {
+fn parse_block<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::Statement>, &'a[Token<'a>]) {
+    match tokens {
         [Token::OpenBrace, rest @ ..] => {
-            let (statements, rest) = parse_block_items(rest.to_vec());
-            match rest.as_slice() {
-                [Token::CloseBrace, rest @ ..] => (statements, rest.to_vec()),
+            let (statements, rest) = parse_block_items(rest);
+            match rest {
+                [Token::CloseBrace, rest @ ..] => (statements, rest),
                 _ => panic!("Expected closing brace at end of block")
             }
         },
@@ -106,10 +100,10 @@ fn parse_block(tokens: Vec<Token>) -> (Vec<ast::Statement>, Vec<Token>) {
     }
 }
 
-fn parse_top_level(tokens: Vec<Token>) -> (ast::TopLevel, Vec<Token>) {
-    match tokens.as_slice() {
+fn parse_top_level<'a>(tokens: &'a[Token<'a>]) -> (ast::TopLevel, &'a[Token<'a>]) {
+    match tokens {
         [Token::IntKeyword, Token::Identifier(i), Token::OpenParenthesis, Token::CloseParenthesis, rest @ ..] => {
-            let (body, rest) = parse_block(rest.to_vec());
+            let (body, rest) = parse_block(rest);
             let function = ast::TopLevel::Function { fun_type: ast::TypeDef::IntType, name: i.to_string(), body: body };
             (function, rest)
         },
@@ -117,11 +111,11 @@ fn parse_top_level(tokens: Vec<Token>) -> (ast::TopLevel, Vec<Token>) {
     }
 }
 
-fn parse_top_levels(tokens: Vec<Token>) -> Vec<ast::TopLevel> {
-    match tokens.as_slice() {
+fn parse_top_levels(tokens: &[Token]) -> Vec<ast::TopLevel> {
+    match tokens {
         [] => vec![],
         tokens => {
-            let (top_level, rest) = parse_top_level(tokens.to_vec());
+            let (top_level, rest) = parse_top_level(tokens);
             let top_levels = parse_top_levels(rest);
             vec![top_level].into_iter().chain(top_levels).collect()
         }
@@ -129,5 +123,5 @@ fn parse_top_levels(tokens: Vec<Token>) -> Vec<ast::TopLevel> {
 }
 
 pub fn parse(tokens: Vec<Token>) -> ast::Program {
-    ast::Program { block: parse_top_levels(tokens) }
+    ast::Program { block: parse_top_levels(tokens.as_slice()) }
 }

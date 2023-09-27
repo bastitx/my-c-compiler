@@ -18,7 +18,7 @@ fn main() {
     let ast = parser::parse(tokens);
     // println!("{:?}", ast);
     let output = generator::generate(ast);
-    // println!("{}", output);
+    println!("{}", output);
     if args.len() == 2 {
         let file_path = path::Path::new(&args[1]);
         let output_file = file_path.with_extension("s");

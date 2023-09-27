@@ -1,7 +1,6 @@
 use regex::Regex;
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token<'a> {
     OpenBrace, 
     CloseBrace,
@@ -18,6 +17,14 @@ pub enum Token<'a> {
     Addition,
     Multiplication,
     Division,
+    LogicalAnd,
+    LogicalOr,
+    EqualTo,
+    NotEqualTo,
+    LessThan,
+    LessThanOrEqualTo,
+    GreaterThan,
+    GreaterThanOrEqualTo,
 }
 
 static INTEGER_REGEX: &str = r"^([0-9]+)((.|\s)*)";
@@ -56,12 +63,20 @@ fn lex_rest(chars: &[u8]) -> Vec<Token> {
         [b'(', rest @ ..] => vec![Token::OpenParenthesis].into_iter().chain(lex_rest(rest)).collect(),
         [b')', rest @ ..] => vec![Token::CloseParenthesis].into_iter().chain(lex_rest(rest)).collect(),
         [b';', rest @ ..] => vec![Token::Semicolon].into_iter().chain(lex_rest(rest)).collect(),
+        [b'!', b'=', rest @ ..] => vec![Token::NotEqualTo].into_iter().chain(lex_rest(rest)).collect(),
+        [b'=', b'=', rest @ ..] => vec![Token::EqualTo].into_iter().chain(lex_rest(rest)).collect(),
         [b'-', rest @ ..] => vec![Token::Negation].into_iter().chain(lex_rest(rest)).collect(),
         [b'~', rest @ ..] => vec![Token::BitwiseComplement].into_iter().chain(lex_rest(rest)).collect(),    
         [b'!', rest @ ..] => vec![Token::LogicalNegation].into_iter().chain(lex_rest(rest)).collect(),
         [b'+', rest @ ..] => vec![Token::Addition].into_iter().chain(lex_rest(rest)).collect(),
         [b'*', rest @ ..] => vec![Token::Multiplication].into_iter().chain(lex_rest(rest)).collect(),
         [b'/', rest @ ..] => vec![Token::Division].into_iter().chain(lex_rest(rest)).collect(),
+        [b'&', b'&', rest @ ..] => vec![Token::LogicalAnd].into_iter().chain(lex_rest(rest)).collect(),
+        [b'|', b'|', rest @ ..] => vec![Token::LogicalOr].into_iter().chain(lex_rest(rest)).collect(),
+        [b'<', b'=', rest @ ..] => vec![Token::LessThanOrEqualTo].into_iter().chain(lex_rest(rest)).collect(),
+        [b'<', rest @ ..] => vec![Token::LessThan].into_iter().chain(lex_rest(rest)).collect(),
+        [b'>', b'=', rest @ ..] => vec![Token::GreaterThanOrEqualTo].into_iter().chain(lex_rest(rest)).collect(),
+        [b'>', rest @ ..] => vec![Token::GreaterThan].into_iter().chain(lex_rest(rest)).collect(),
         [c, rest @ ..] => if c.is_ascii_whitespace() {
             lex_rest(rest)
         } else {

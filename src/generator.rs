@@ -2,7 +2,7 @@ use crate::ast::{Program, TopLevel, TypeDef, Statement, Expression, Const, Unary
 
 fn generate_const_expression(c: &Const) -> String {
     match c {
-        Const::Int(i) => format!("\tmov\t${}, %rax\n", i)
+        Const::Int(i) => format!("\tmovq\t${}, %rax\n", i)
     }
 }
 
@@ -11,8 +11,8 @@ fn generate_unary_operation_expression(op: &UnaryOp, exp: &Expression) -> String
         UnaryOp::Negate => String::from("\tneg\t%rax\n"),
         UnaryOp::Complement => String::from("\tnot\t%rax\n"),
         UnaryOp::Not => {
-            let l1 = String::from("\tcmp\t$0, %rax\n");
-            let l2 = String::from("\tmov\t$0, %rax\n");
+            let l1 = String::from("\tcmpq\t$0, %rax\n");
+            let l2 = String::from("\tmovq\t$0, %rax\n");
             let l3 = String::from("\tsete\t%al\n");
             l1 + &l2 + &l3
         }
@@ -22,16 +22,16 @@ fn generate_unary_operation_expression(op: &UnaryOp, exp: &Expression) -> String
 
 fn generate_binary_operation_expression(op: &BinaryOp, exp1: &Expression, exp2: &Expression) -> String {
     let gen_exp2 = generate_expression(exp2);
-    let push_exp2 = String::from("\tpush\t%rax\n");
+    let push_exp2 = String::from("\tpushq\t%rax\n");
     let gen_exp1 = generate_expression(exp1);
-    let pop_exp2 = String::from("\tpop\t%rcx\n");
+    let pop_exp2 = String::from("\tpopq\t%rcx\n");
     let operation = match op {
-        BinaryOp::Addition => String::from("\tadd\t%rcx, %rax\n"),
-        BinaryOp::Multiplication => String::from("\timul\t%rcx, %rax\n"),
-        BinaryOp::Subtraction => String::from("\tsub\t%rcx, %rax\n"),
+        BinaryOp::Addition => String::from("\taddq\t%rcx, %rax\n"),
+        BinaryOp::Multiplication => String::from("\timulq\t%rcx, %rax\n"),
+        BinaryOp::Subtraction => String::from("\tsubq\t%rcx, %rax\n"),
         BinaryOp::Division => {
             let l1 = String::from("\tcqo\n"); // convert doubleword
-            let l2 = String::from("\tidiv\t%rcx\n");
+            let l2 = String::from("\tidivq\t%rcx\n");
             l1 + &l2
         },
     };
