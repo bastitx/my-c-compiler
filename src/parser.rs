@@ -142,6 +142,13 @@ fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>
                 _ => panic!("Didn't find closing parenthesis")
             }
         },
+        [Token::OpenBrace, rest @ ..] => {
+            let (block_items, rest) = parse_block_items(rest);
+            match rest {
+                [Token::CloseBrace, rest @ ..] => (ast::Statement::Compound(block_items), rest),
+                _ => panic!("Expected closing brace at end of block")
+            }
+        },
         tokens => {
             let (exp, rest) = parse_expression(tokens);
             match rest {
@@ -184,23 +191,10 @@ fn parse_block_items<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::BlockItem>, &'a[To
     }
 }
 
-fn parse_block<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::BlockItem>, &'a[Token<'a>]) {
-    match tokens {
-        [Token::OpenBrace, rest @ ..] => {
-            let (block_items, rest) = parse_block_items(rest);
-            match rest {
-                [Token::CloseBrace, rest @ ..] => (block_items, rest),
-                _ => panic!("Expected closing brace at end of block")
-            }
-        },
-        _ => panic!("Expected block to begin with opening brace")
-    }
-}
-
 fn parse_top_level<'a>(tokens: &'a[Token<'a>]) -> (ast::TopLevel, &'a[Token<'a>]) {
     match tokens {
         [Token::IntKeyword, Token::Identifier(i), Token::OpenParenthesis, Token::CloseParenthesis, rest @ ..] => {
-            let (body, rest) = parse_block(rest);
+            let (body, rest) = parse_statement(rest);
             let function = ast::TopLevel::Function { fun_type: ast::TypeDef::IntType, name: i.to_string(), body: body };
             (function, rest)
         },

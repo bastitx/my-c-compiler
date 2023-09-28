@@ -193,7 +193,8 @@ fn generate_statement(statement: &Statement, context: &Context) -> String {
     match statement {
         Statement::ReturnVal(exp) => generate_return_val(exp, context),
         Statement::ExpressionStatement(exp) => generate_expression(exp, context),
-        Statement::Conditional(exp, if_statement, else_statement) => generate_if_else(exp, if_statement, else_statement, context)
+        Statement::Conditional(exp, if_statement, else_statement) => generate_if_else(exp, if_statement, else_statement, context),
+        Statement::Compound(block_items) => generate_block_items(block_items, context)
     }
 }
 
@@ -204,21 +205,28 @@ fn generate_block_item(block_item: &BlockItem, context: &Context) -> String {
     }
 }
 
-fn generate_function_body(body: &[BlockItem], context: &Context) -> String {
-    let body = if let Some(BlockItem::Statement(Statement::ReturnVal(_))) = body.last() {
-        body.to_vec()
-    } else {
-        [body, &[BlockItem::Statement(Statement::ReturnVal(Expression::ConstExpression(Const::Int(0))))]].concat()
-    };
-    body.into_iter().fold(String::new(), |acc, x| {
-        acc + &generate_block_item(&x, context)
-    })
+fn generate_stack_cleanup(context: &Context) -> String {
+    let bytes_to_deallocate = 8 * context.get_current_scope_size();
+    format!("\taddq\t${}, %rsp\n", bytes_to_deallocate)
+}
+
+fn generate_block_items(block_items: &[BlockItem], context: &Context) -> String {
+    let context = Context::new(Some(context));
+    block_items.into_iter().fold(String::new(), |acc, x| {
+        acc + &generate_block_item(&x, &context)
+    }) + &generate_stack_cleanup(&context)
+
+}
+
+fn generate_function_body(body: &Statement, context: &Context) -> String {
+    // TODO remove the generate return val? It was added so that we return 0 when there is no return statement
+    generate_statement(body, context) + &generate_return_val(&Expression::ConstExpression(Const::Int(0)), context)
 }
 
 fn generate_function(
     _: &TypeDef,
     name: &String,
-    body: &Vec<BlockItem>,
+    body: &Statement,
     context: &Context,
 ) -> String {
     [
@@ -232,7 +240,7 @@ fn generate_function(
     .join("")
 }
 
-fn generate_block(tl: &TopLevel, context: &Context) -> String {
+fn generate_top_level(tl: &TopLevel, context: &Context) -> String {
     match tl {
         TopLevel::Function {
             fun_type,
@@ -242,13 +250,13 @@ fn generate_block(tl: &TopLevel, context: &Context) -> String {
     }
 }
 
-fn generate_blocks(block: Vec<TopLevel>, context: &Context) -> String {
+fn generate_top_levels(block: Vec<TopLevel>, context: &Context) -> String {
     block
         .into_iter()
-        .fold(String::new(), |acc, x| acc + &generate_block(&x, context))
+        .fold(String::new(), |acc, x| acc + &generate_top_level(&x, context))
 }
 
 pub fn generate(program: Program) -> String {
-    let context = Context::new();
-    generate_blocks(program.block, &context)
+    let context = Context::new(None);
+    generate_top_levels(program.block, &context)
 }

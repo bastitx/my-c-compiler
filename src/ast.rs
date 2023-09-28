@@ -46,6 +46,7 @@ pub enum Statement {
     ExpressionStatement(Expression),
     ReturnVal(Expression),
     Conditional(Expression, Box<Statement>, Option<Box<Statement>>),
+    Compound(Vec<BlockItem>),
 }
 
 #[derive(Clone, Debug)]
@@ -59,7 +60,7 @@ pub enum TopLevel {
     Function {
         fun_type: TypeDef,
         name: String,
-        body: Vec<BlockItem>
+        body: Statement
     }
 }
 

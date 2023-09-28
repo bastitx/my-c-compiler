@@ -1,34 +1,45 @@
-use std::{cell::{Cell, RefCell}, collections::HashMap};
+use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, sync::atomic::{AtomicU32, Ordering}};
 
 // TODO currently not thread-safe
 pub struct Context {
-    label_counter: Cell<u32>,
     var_map: RefCell<HashMap<String, i32>>,
     stack_index: Cell<i32>,
+    current_scope_var: RefCell<HashSet<String>>,
 }
 
+static LABEL_COUNTER: AtomicU32 = AtomicU32::new(0);
+
 impl Context {
-    pub fn new() -> Context {
-        Context { 
-            label_counter: Cell::new(0),
-            var_map: RefCell::new(HashMap::new()),
-            stack_index: Cell::new(0),
+    pub fn new(parent: Option<&Context>) -> Context {
+        if let Some(parent) = parent {
+            Context { 
+                var_map: RefCell::new(parent.var_map.borrow().clone()),
+                stack_index: Cell::new(parent.stack_index.get().clone()),
+                current_scope_var: RefCell::new(HashSet::new()),
+            }
+        } else {
+            Context { 
+                var_map: RefCell::new(HashMap::new()),
+                stack_index: Cell::new(0),
+                current_scope_var: RefCell::new(HashSet::new()),
+            }
         }
     }
 
     pub fn get_and_increase_label(&self) -> String {
-        self.label_counter.set(self.label_counter.get() + 1);
-        format!("_{}", self.label_counter.get())
+        let label = LABEL_COUNTER.fetch_add(1, Ordering::SeqCst);
+        format!("_{}", label)
     }
 
     pub fn declare_var(&self, var_name: &str) {
         let var_stack_index = self.stack_index.get() - 8;
         self.stack_index.set(var_stack_index);
-        let mut map = self.var_map.borrow_mut();
-        if let Some(_) = map.get(var_name) {
+        let mut set = self.current_scope_var.borrow_mut();
+        if let Some(_) = set.get(var_name) {
             panic!("Variable name already exists")
         }
-        map.insert(String::from(var_name), var_stack_index);
+        set.insert(String::from(var_name));
+        self.var_map.borrow_mut().insert(String::from(var_name), var_stack_index);
     }
 
     pub fn get_var_stack_index(&self, var_name: &str) -> i32 {
@@ -37,6 +48,9 @@ impl Context {
         } else {
             panic!("Variable name not found")
         }
+    }
 
+    pub fn get_current_scope_size(&self) -> usize {
+        self.current_scope_var.borrow().len()
     }
 }
