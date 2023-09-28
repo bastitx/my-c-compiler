@@ -17,6 +17,7 @@ pub enum Token<'a> {
     Addition,
     Multiplication,
     Division,
+    Modulo,
     LogicalAnd,
     LogicalOr,
     EqualTo,
@@ -30,6 +31,11 @@ pub enum Token<'a> {
     QuestionMark,
     IfKeyword,
     ElseKeyword,
+    ForKeyword,
+    WhileKeyword,
+    DoKeyword,
+    BreakKeyword,
+    ContinueKeyword,
 }
 
 static INTEGER_REGEX: &str = r"^([0-9]+)((.|\s)*)";
@@ -42,6 +48,11 @@ fn get_id(token: &str) -> Token {
         "int" => Token::IntKeyword,
         "if" => Token::IfKeyword,
         "else" => Token::ElseKeyword,
+        "for" => Token::ForKeyword,
+        "while" => Token::WhileKeyword,
+        "do" => Token::DoKeyword,
+        "break" => Token::BreakKeyword,
+        "continue" => Token::ContinueKeyword,
         _ => Token::Identifier(token)
     }
 }
@@ -87,6 +98,7 @@ fn lex_rest(chars: &[u8]) -> Vec<Token> {
         [b'>', rest @ ..] => vec![Token::GreaterThan].into_iter().chain(lex_rest(rest)).collect(),
         [b'?', rest @ ..] => vec![Token::QuestionMark].into_iter().chain(lex_rest(rest)).collect(),
         [b':', rest @ ..] => vec![Token::Colon].into_iter().chain(lex_rest(rest)).collect(),
+        [b'%', rest @ ..] => vec![Token::Modulo].into_iter().chain(lex_rest(rest)).collect(),
         [c, rest @ ..] => if c.is_ascii_whitespace() {
             lex_rest(rest)
         } else {

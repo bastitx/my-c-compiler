@@ -1,4 +1,4 @@
-use crate::ast::{self, BinaryOp, Expression, BlockItem};
+use crate::ast::{self, BinaryOp, Expression, BlockItem, OptionalExpression};
 use crate::lexer::Token;
 
 fn parse_factor<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
@@ -41,6 +41,7 @@ fn token_to_binary_op(token: &Token) -> BinaryOp {
         Token::LessThanOrEqualTo => BinaryOp::LessThanOrEqualTo,
         Token::GreaterThan => BinaryOp::GreaterThan,
         Token::GreaterThanOrEqualTo => BinaryOp::GreaterThanOrEqualTo,
+        Token::Modulo => BinaryOp::Modulo,
         _ => panic!("Token not a binary operation")
     }
 }
@@ -66,7 +67,7 @@ fn parse_binary_expression<'a>(op_tokens: &'a[Token<'a>], next_level: &'a dyn Fn
 }
 
 fn parse_term<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
-    parse_binary_expression(&[Token::Multiplication, Token::Division], &parse_factor)(tokens)
+    parse_binary_expression(&[Token::Multiplication, Token::Division, Token::Modulo], &parse_factor)(tokens)
 }
 
 fn parse_additive_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
@@ -117,6 +118,91 @@ fn parse_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'
     }
 }
 
+fn parse_optional_expression<'a>(tokens: &'a[Token<'a>]) -> (ast::OptionalExpression, &'a[Token<'a>]) {
+    match tokens {
+        [Token::Semicolon | Token::CloseParenthesis, ..] => (ast::OptionalExpression::None, tokens),
+        tokens => {
+            let (exp, rest) = parse_expression(tokens);
+            (ast::OptionalExpression::Some(exp), rest)
+        }
+    }
+}
+
+fn parse_if_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
+    let (exp, rest) = parse_expression(tokens);
+    let (statement, rest) = match rest {
+        [Token::CloseParenthesis, rest @ ..] => parse_statement(rest),
+        _ => panic!("Didn't find closing parenthesis")
+    };
+    let (else_statement, rest) = if let [Token::ElseKeyword, rest @ ..] = rest {
+        let (else_statement, rest) = parse_statement(rest);
+        (Some(Box::new(else_statement)), rest)
+    } else {
+        (None, rest)
+    };
+    (ast::Statement::Conditional(exp, Box::new(statement), else_statement), rest)
+}
+
+fn parse_for_loop_rest<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, ast::OptionalExpression, ast::Statement, &'a[Token<'a>]) {
+    let (exp2, rest) = parse_optional_expression(tokens);
+    let exp2 = if let Some(exp) = exp2 {
+        exp
+    } else {
+        ast::Expression::ConstExpression(ast::Const::Int(1))
+    };
+    let rest = match rest {
+        [Token::Semicolon, rest @ ..] => rest,
+        _ => panic!("Expected semi colon")
+    };
+    let (exp3, rest) = parse_optional_expression(rest);
+    let rest = match rest {
+        [Token::CloseParenthesis, rest @ ..] => rest,
+        _ => panic!("Expected semi colon")
+    };
+    let (statement, rest) = parse_statement(rest);
+    (exp2, exp3, statement, rest)
+}
+
+fn parse_for_loop<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
+    let (exp1, rest) = parse_optional_expression(tokens);
+    let rest = match rest {
+        [Token::Semicolon, rest @ ..] => rest,
+        _ => panic!("Expected semi colon")
+    };
+    let (exp2, exp3, statement, rest) = parse_for_loop_rest(rest);
+    (ast::Statement::For(exp1, exp2, exp3, Box::new(statement)), rest)
+}
+
+fn parse_for_decl_loop<'a>(var_name: &str, tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
+    let (declaration, rest) = parse_declaration(var_name, tokens);
+    let (exp2, exp3, statement, rest) = parse_for_loop_rest(rest);
+    (ast::Statement::ForDecl(declaration, exp2, exp3, Box::new(statement)), rest)
+}
+
+fn parse_while_loop<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
+    let (exp, rest) = parse_expression(tokens);
+    let rest = match rest {
+        [Token::CloseParenthesis, rest @ ..] => rest,
+        _ => panic!("Expected semi colon")
+    };
+    let (statement, rest) = parse_statement(rest);
+    (ast::Statement::While(exp, Box::new(statement)), rest)
+}
+
+fn parse_do_while_loop<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
+    let (statement, rest) = parse_statement(tokens);
+    let rest = match rest {
+        [Token::WhileKeyword, Token::OpenParenthesis, rest @ ..] => rest,
+        _ => panic!("Expected semi colon")
+    };
+    let (exp, rest) = parse_expression(rest);
+    let rest = match rest {
+        [Token::CloseParenthesis, Token::Semicolon, rest @ ..] => rest,
+        _ => panic!("Expected closing parenthesis and semi colon")
+    };
+    (ast::Statement::DoWhile(Box::new(statement), exp), rest)
+}
+
 fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>]) {
     match tokens {
         [Token::ReturnKeyword, rest @ ..] => {
@@ -126,22 +212,7 @@ fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>
                 _ => panic!("Didn't find semi colon")
             }
         },
-        [Token::IfKeyword, Token::OpenParenthesis, rest @ ..] => {
-            let (exp, rest) = parse_expression(rest);
-            match rest {
-                [Token::CloseParenthesis, rest @ ..] => {
-                    let (statement, rest) = parse_statement(rest);
-                    let (else_statement, rest) = if let [Token::ElseKeyword, rest @ ..] = rest {
-                        let (else_statement, rest) = parse_statement(rest);
-                        (Some(Box::new(else_statement)), rest)
-                    } else {
-                        (None, rest)
-                    };
-                    (ast::Statement::Conditional(exp, Box::new(statement), else_statement), rest)
-                }
-                _ => panic!("Didn't find closing parenthesis")
-            }
-        },
+        [Token::IfKeyword, Token::OpenParenthesis, rest @ ..] => parse_if_statement(rest),
         [Token::OpenBrace, rest @ ..] => {
             let (block_items, rest) = parse_block_items(rest);
             match rest {
@@ -149,30 +220,42 @@ fn parse_statement<'a>(tokens: &'a[Token<'a>]) -> (ast::Statement, &'a[Token<'a>
                 _ => panic!("Expected closing brace at end of block")
             }
         },
+        [Token::ForKeyword, Token::OpenParenthesis, Token::IntKeyword, Token::Identifier(name), rest @ ..] => parse_for_decl_loop(name, rest),
+        [Token::ForKeyword, Token::OpenParenthesis, rest @ ..] => parse_for_loop(rest),
+        [Token::WhileKeyword, Token::OpenParenthesis, rest @ ..] => parse_while_loop(rest),
+        [Token::DoKeyword, rest @ ..] => parse_do_while_loop(rest),
+        [Token::BreakKeyword, Token::Semicolon, rest @ ..] => (ast::Statement::Break, rest),
+        [Token::ContinueKeyword, Token::Semicolon, rest @ ..] => (ast::Statement::Continue, rest),
         tokens => {
-            let (exp, rest) = parse_expression(tokens);
+            let (optional_exp, rest) = parse_optional_expression(tokens);
+            let rest = match rest {
+                [Token::Semicolon, rest @ ..] => rest,
+                _ => panic!("Expected semi colon")
+            };
+            (ast::Statement::Expression(optional_exp), rest)
+        },
+    }
+}
+
+fn parse_declaration<'a>(name: &str, tokens: &'a[Token<'a>]) -> (ast::Declaration, &'a[Token<'a>]) {
+    match tokens {
+        [Token::Semicolon, rest @ ..] => (ast::Declaration::Declaration(name.to_string(), OptionalExpression::None), rest),
+        [Token::Assignment, rest @ ..] => {
+            let (exp, rest) = parse_expression(rest);
             match rest {
-                [Token::Semicolon, rest @ ..] => (ast::Statement::ExpressionStatement(exp), rest),
+                [Token::Semicolon, rest @ ..] => (ast::Declaration::Declaration(name.to_string(), OptionalExpression::Some(exp)), rest),
                 _ => panic!("Didn't find semi colon")
             }
-        }
+        },
+        _ => panic!("Incorrect declaration")
     }
 }
 
 fn parse_block_item<'a>(tokens: &'a[Token<'a>]) -> (ast::BlockItem, &'a[Token<'a>]) {
     match tokens {
         [Token::IntKeyword, Token::Identifier(name), rest @ ..] => {
-            match rest {
-                [Token::Semicolon, rest @ ..] => (ast::BlockItem::Declaration(name.to_string(), None), rest),
-                [Token::Assignment, rest @ ..] => {
-                    let (exp, rest) = parse_expression(rest);
-                    match rest {
-                        [Token::Semicolon, rest @ ..] => (ast::BlockItem::Declaration(name.to_string(), Some(exp)), rest),
-                        _ => panic!("Didn't find semi colon")
-                    }
-                },
-                _ => panic!("Incorrect declaration")
-            }
+            let (declaration, rest) = parse_declaration(name, rest);
+            (ast::BlockItem::Declaration(declaration), rest)
         },
         _ => {
             let (statement, rest) = parse_statement(tokens);

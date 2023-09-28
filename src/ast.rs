@@ -29,6 +29,7 @@ pub enum BinaryOp {
     LessThanOrEqualTo,
     GreaterThan,
     GreaterThanOrEqualTo,
+    Modulo,
 }
 
 #[derive(Clone, Debug)]
@@ -41,17 +42,30 @@ pub enum Expression{
     Conditional(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
+pub type OptionalExpression = Option<Expression>;
+
 #[derive(Clone, Debug)]
 pub enum Statement {
-    ExpressionStatement(Expression),
+    Expression(OptionalExpression),
     ReturnVal(Expression),
     Conditional(Expression, Box<Statement>, Option<Box<Statement>>),
     Compound(Vec<BlockItem>),
+    For(Option<Expression>, Expression, Option<Expression>, Box<Statement>),
+    ForDecl(Declaration, Expression, Option<Expression>, Box<Statement>),
+    While(Expression, Box<Statement>),
+    DoWhile(Box<Statement>, Expression),
+    Break,
+    Continue,
+}
+
+#[derive(Clone, Debug)]
+pub enum Declaration {
+    Declaration(String, OptionalExpression),
 }
 
 #[derive(Clone, Debug)]
 pub enum BlockItem {
-    Declaration(String, Option<Expression>), // Optional Expression is initialization
+    Declaration(Declaration),
     Statement(Statement),
 }
 

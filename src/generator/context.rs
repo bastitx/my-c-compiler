@@ -5,6 +5,8 @@ pub struct Context {
     var_map: RefCell<HashMap<String, i32>>,
     stack_index: Cell<i32>,
     current_scope_var: RefCell<HashSet<String>>,
+    pub current_break: Option<String>,
+    pub current_continue: Option<String>,
 }
 
 static LABEL_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -16,13 +18,27 @@ impl Context {
                 var_map: RefCell::new(parent.var_map.borrow().clone()),
                 stack_index: Cell::new(parent.stack_index.get().clone()),
                 current_scope_var: RefCell::new(HashSet::new()),
+                current_break: parent.current_break.clone(),
+                current_continue: parent.current_continue.clone(),
             }
         } else {
             Context { 
                 var_map: RefCell::new(HashMap::new()),
                 stack_index: Cell::new(0),
                 current_scope_var: RefCell::new(HashSet::new()),
+                current_break: None,
+                current_continue: None,
             }
+        }
+    }
+
+    pub fn new_loop(parent: &Context, current_break: Option<String>, current_continue: Option<String>) -> Context {
+        Context { 
+            var_map: RefCell::new(parent.var_map.borrow().clone()),
+            stack_index: Cell::new(parent.stack_index.get().clone()),
+            current_scope_var: RefCell::new(HashSet::new()),
+            current_break: current_break,
+            current_continue: current_continue,
         }
     }
 

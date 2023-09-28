@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Const, Expression, Program, Statement, TopLevel, TypeDef, UnaryOp, BlockItem};
+use crate::ast::{BinaryOp, Const, Expression, Program, Statement, TopLevel, TypeDef, UnaryOp, BlockItem, Declaration, OptionalExpression};
 use context::Context;
 
 pub mod context;
@@ -105,6 +105,14 @@ fn generate_binary_operation_expression(
         BinaryOp::GreaterThanOrEqualTo => generate_comparison("setge"),
         BinaryOp::LessThan => generate_comparison("setl"),
         BinaryOp::LessThanOrEqualTo => generate_comparison("setle"),
+        BinaryOp::Modulo => {
+            [
+                String::from("\tcqo\n"), // convert doubleword
+                String::from("\tidivq\t%rcx\n"),
+                String::from("\tmovq\t%rdx, %rax\n")
+            ]
+            .join("")
+        }
         _ => panic!("Unsupported binary operation"),
     };
     gen + &operation
@@ -154,6 +162,14 @@ fn generate_expression(exp: &Expression, context: &Context) -> String {
     }
 }
 
+fn generate_optional_expression(exp: &OptionalExpression, context: &Context) -> String {
+    if let Some(exp) = exp {
+        generate_expression(exp, context)
+    } else {
+        String::new()
+    }
+}
+
 fn generate_return_val(exp: &Expression, context: &Context) -> String {
     [
         generate_expression(exp, context),
@@ -162,6 +178,11 @@ fn generate_return_val(exp: &Expression, context: &Context) -> String {
         String::from("\tret\n"),
     ]
     .join("")
+}
+
+fn generate_declaration(decl: &Declaration, context: &Context) -> String {
+    let Declaration::Declaration(var_name, exp) = decl;
+    generate_var_declaration(var_name, exp, context)
 }
 
 fn generate_var_declaration(var_name: &str, exp: &Option<Expression>, context: &Context) -> String {
@@ -189,18 +210,116 @@ fn generate_if_else(exp: &Expression, if_statement: &Box<Statement>, else_statem
     ].join("")
 }
 
+fn generate_while_loop(exp: &Expression, statement: &Statement, context: &Context) -> String {
+    let label_while = context.get_and_increase_label();
+    let label_after_statement = context.get_and_increase_label();
+    let label_end = context.get_and_increase_label();
+    let context = Context::new_loop(context, Some(label_end.clone()), Some(label_after_statement.clone()));
+    [
+        format!("{}:\n", label_while),
+        generate_expression(exp, &context),
+        String::from("\tcmpq\t$0, %rax\n"),
+        format!("\tje\t{}\n", label_end),
+        generate_statement(statement, &context),
+        format!("{}:\n", label_after_statement),
+        format!("\tjmp\t{}\n", label_while),
+        format!("{}:\n", label_end),
+        generate_stack_cleanup(&context)
+    ].join("")
+}
+
+fn generate_do_while_loop(statement: &Statement, exp: &Expression, context: &Context) -> String {
+    let label_do = context.get_and_increase_label();
+    let label_after_statement = context.get_and_increase_label();
+    let label_end = context.get_and_increase_label();
+    let context = Context::new_loop(context, Some(label_end.clone()), Some(label_after_statement.clone()));
+    [
+        format!("{}:\n", label_do),
+        generate_statement(statement, &context),
+        format!("{}:\n", label_after_statement),
+        generate_expression(exp, &context),
+        String::from("\tcmpq\t$0, %rax\n"),
+        format!("\tje\t{}\n", label_end),
+        format!("\tjmp\t{}\n", label_do),
+        format!("{}:\n", label_end),
+        generate_stack_cleanup(&context)
+    ].join("")
+}
+
+fn generate_for_loop(exp1: &OptionalExpression, exp2: &Expression, exp3: &OptionalExpression, statement: &Statement, context: &Context) -> String {
+    let label_for = context.get_and_increase_label();
+    let label_after_statement = context.get_and_increase_label();
+    let label_end = context.get_and_increase_label();
+    let context = Context::new_loop(context, Some(label_end.clone()), Some(label_after_statement.clone()));
+    [
+        generate_optional_expression(exp1, &context),
+        format!("{}:\n", label_for),
+        generate_expression(exp2, &context),
+        String::from("\tcmpq\t$0, %rax\n"),
+        format!("\tje\t{}\n", label_end),
+        generate_statement(statement, &context),
+        format!("{}:\n", label_after_statement),
+        generate_optional_expression(exp3, &context),
+        format!("\tjmp\t{}\n", label_for),
+        format!("{}:\n", label_end),
+        generate_stack_cleanup(&context)
+    ].join("")
+}
+
+fn generate_for_decl_loop(decl: &Declaration, exp2: &Expression, exp3: &OptionalExpression, statement: &Statement, context: &Context) -> String {
+    let label_for = context.get_and_increase_label();
+    let label_after_statement = context.get_and_increase_label();
+    let label_end = context.get_and_increase_label();
+    let context = Context::new_loop(context, Some(label_end.clone()), Some(label_after_statement.clone()));
+    [
+        generate_declaration(decl, &context),
+        format!("{}:\n", label_for),
+        generate_expression(exp2, &context),
+        String::from("\tcmpq\t$0, %rax\n"),
+        format!("\tje\t{}\n", label_end),
+        generate_statement(statement, &context),
+        format!("{}:\n", label_after_statement),
+        generate_optional_expression(exp3, &context),
+        format!("\tjmp\t{}\n", label_for),
+        format!("{}:\n", label_end),
+        generate_stack_cleanup(&context)
+    ].join("")
+}
+
+fn generate_continue(context: &Context) -> String {
+    if let Context { current_continue: Some(label), .. } = context{
+        format!("\tjmp\t{}\n", label)
+    } else {
+        panic!("Illegal continue statement. Not in loop")
+    }
+}
+
+fn generate_break(context: &Context) -> String {
+    if let Context { current_break: Some(label), .. } = context{
+        format!("\tjmp\t{}\n", label)
+    } else {
+        panic!("Illegal break statement. Not in loop")
+    }
+}
+
 fn generate_statement(statement: &Statement, context: &Context) -> String {
     match statement {
         Statement::ReturnVal(exp) => generate_return_val(exp, context),
-        Statement::ExpressionStatement(exp) => generate_expression(exp, context),
+        Statement::Expression(exp) => generate_optional_expression(exp, context),
         Statement::Conditional(exp, if_statement, else_statement) => generate_if_else(exp, if_statement, else_statement, context),
-        Statement::Compound(block_items) => generate_block_items(block_items, context)
+        Statement::Compound(block_items) => generate_block_items(block_items, context),
+        Statement::For(exp1, exp2, exp3, statement) => generate_for_loop(exp1, exp2, exp3, statement, context),
+        Statement::ForDecl(decl, exp2, exp3, statement) => generate_for_decl_loop(decl, exp2, exp3, statement, context),
+        Statement::Break => generate_break(context),
+        Statement::Continue => generate_continue(context),
+        Statement::While(exp, statement) => generate_while_loop(exp, statement, context),
+        Statement::DoWhile(statement, exp) => generate_do_while_loop(statement, exp, context),
     }
 }
 
 fn generate_block_item(block_item: &BlockItem, context: &Context) -> String {
     match block_item {
-        BlockItem::Declaration(name, exp) => generate_var_declaration(name, exp, context),
+        BlockItem::Declaration(Declaration::Declaration(name, exp)) => generate_var_declaration(name, exp, context),
         BlockItem::Statement(statement) => generate_statement(statement, context)
     }
 }
