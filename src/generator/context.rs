@@ -44,7 +44,7 @@ impl Context {
 
     pub fn get_and_increase_label(&self) -> String {
         let label = LABEL_COUNTER.fetch_add(1, Ordering::SeqCst);
-        format!("_{}", label)
+        format!(".L{}", label)
     }
 
     pub fn declare_var(&self, var_name: &str) {
