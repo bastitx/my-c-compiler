@@ -36,6 +36,7 @@ pub enum Token<'a> {
     DoKeyword,
     BreakKeyword,
     ContinueKeyword,
+    Comma,
 }
 
 static INTEGER_REGEX: &str = r"^([0-9]+)((.|\s)*)";
@@ -99,6 +100,7 @@ fn lex_rest(chars: &[u8]) -> Vec<Token> {
         [b'?', rest @ ..] => vec![Token::QuestionMark].into_iter().chain(lex_rest(rest)).collect(),
         [b':', rest @ ..] => vec![Token::Colon].into_iter().chain(lex_rest(rest)).collect(),
         [b'%', rest @ ..] => vec![Token::Modulo].into_iter().chain(lex_rest(rest)).collect(),
+        [b',', rest @ ..] => vec![Token::Comma].into_iter().chain(lex_rest(rest)).collect(),
         [c, rest @ ..] => if c.is_ascii_whitespace() {
             lex_rest(rest)
         } else {

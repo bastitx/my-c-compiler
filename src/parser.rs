@@ -1,3 +1,5 @@
+use std::vec;
+
 use crate::ast::{self, BinaryOp, Expression, BlockItem, OptionalExpression};
 use crate::lexer::Token;
 
@@ -21,13 +23,36 @@ fn parse_factor<'a>(tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>])
                 _ => panic!("Didn't find semi colon")
             }
         },
+        [Token::Identifier(name), Token::OpenParenthesis, rest @ ..] => parse_function_call(name, rest),
         [Token::Identifier(name), rest @ ..] => (ast::Expression::Var(name.to_string()), rest),
         [t, ..] => panic!("Unknown Expression {:?}", t),
         [] => panic!("Unexpected end of file")
     }
 }
 
-fn token_to_binary_op(token: &Token) -> BinaryOp {
+fn parse_function_call_parameters<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::Expression>, &'a[Token<'a>]) {
+    let (exp, rest) = parse_expression(tokens);
+    let (exps, rest) = parse_function_call_parameters_rest(rest);
+    (vec![exp].into_iter().chain(exps).collect(), rest)
+}
+
+fn parse_function_call_parameters_rest<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::Expression>, &'a[Token<'a>]) {
+    match tokens {
+        [Token::CloseParenthesis, rest @ ..] => (vec![], rest),
+        [Token::Comma, rest @ ..] => parse_function_call_parameters(rest),
+        _ => panic!("Need to separate parameters by commas in function call")
+    }
+}
+
+fn parse_function_call<'a>(name: &str, tokens: &'a[Token<'a>]) -> (ast::Expression, &'a[Token<'a>]) {
+    let (parameters, rest) = match tokens {
+        [Token::CloseParenthesis, rest @ ..] => (vec![], rest),
+        tokens => parse_function_call_parameters(tokens)
+    };
+    (ast::Expression::FunCall(name.to_string(), parameters), rest)
+}
+
+const fn token_to_binary_op(token: &Token) -> BinaryOp {
     match token {
         Token::Addition => BinaryOp::Addition,
         Token::Negation => BinaryOp::Subtraction,
@@ -247,7 +272,7 @@ fn parse_declaration<'a>(name: &str, tokens: &'a[Token<'a>]) -> (ast::Declaratio
                 _ => panic!("Didn't find semi colon")
             }
         },
-        _ => panic!("Incorrect declaration")
+        _ => panic!("Incorrect declaration with remaining tokens {:?}", tokens)
     }
 }
 
@@ -265,23 +290,56 @@ fn parse_block_item<'a>(tokens: &'a[Token<'a>]) -> (ast::BlockItem, &'a[Token<'a
 }
 
 fn parse_block_items<'a>(tokens: &'a[Token<'a>]) -> (Vec<ast::BlockItem>, &'a[Token<'a>]) {
-    if let Some(Token::CloseBrace) = tokens.first() {
-        (vec![], tokens)
-    } else {
-        let (next_block_item, rest) = parse_block_item(tokens);
-        let (block_items, rest) = parse_block_items(rest);
-        (vec![next_block_item].into_iter().chain(block_items).collect(), rest)
+    match tokens {
+        [Token::CloseBrace, ..] => (vec![], tokens),
+        _ => {
+            let (next_block_item, rest) = parse_block_item(tokens);
+            let (block_items, rest) = parse_block_items(rest);
+            (vec![next_block_item].into_iter().chain(block_items).collect(), rest)
+        }
+    }
+}
+
+fn parse_function_definition_parameters<'a>(tokens: &'a[Token<'a>]) -> (Vec<String>, &'a[Token<'a>]) {
+    let (name, rest) = match tokens {
+        [Token::IntKeyword, Token::Identifier(name), rest @ ..] => (name.to_string(), rest),
+        _ => panic!("Unexpected token in function definition parameter list")
+    };
+    let (names, rest) = match rest {
+        [Token::CloseParenthesis, rest @ ..] => (vec![], rest),
+        [Token::Comma, rest @ ..] => parse_function_definition_parameters(rest),
+        _ => panic!("Need to separate parameters by commas in function definition")
+    };
+    (vec![name].into_iter().chain(names).collect(), rest)
+}
+
+fn parse_function_definition<'a>(name: &str, tokens: &'a[Token<'a>]) -> (ast::TopLevel, &'a[Token<'a>]) {
+    let (parameters, rest) = match tokens {
+        [Token::CloseParenthesis, rest @ ..] => (vec![], rest),
+        tokens => parse_function_definition_parameters(tokens)
+    };
+    match rest {
+        [Token::Semicolon, rest @ ..] => {
+            let function = ast::TopLevel::Function { fun_type: ast::TypeDef::IntType, name: name.to_string(), parameters, body: None };
+            (function, rest)
+        },
+        [Token::OpenBrace, rest @ ..] => {
+            let (body, rest) = parse_block_items(rest);
+            let rest = match rest {
+                [Token::CloseBrace, rest @ ..] => rest,
+                _ => panic!("Expected close brace at end of function body")
+            };
+            let function = ast::TopLevel::Function { fun_type: ast::TypeDef::IntType, name: name.to_string(), parameters, body: Some(body) };
+            (function, rest)
+        },
+        _ => panic!("Expected open brace at beginning of function body")
     }
 }
 
 fn parse_top_level<'a>(tokens: &'a[Token<'a>]) -> (ast::TopLevel, &'a[Token<'a>]) {
     match tokens {
-        [Token::IntKeyword, Token::Identifier(i), Token::OpenParenthesis, Token::CloseParenthesis, rest @ ..] => {
-            let (body, rest) = parse_statement(rest);
-            let function = ast::TopLevel::Function { fun_type: ast::TypeDef::IntType, name: i.to_string(), body: body };
-            (function, rest)
-        },
-        _ => panic!("Expected funtion statement")
+        [Token::IntKeyword, Token::Identifier(i), Token::OpenParenthesis, rest @ ..] => parse_function_definition(i, rest),
+        _ => panic!("Expected function statement")
     }
 }
 

@@ -6,4 +6,4 @@ s_file="${f%.c}.s"
 # o_file="${f%.c}.o"
 file="${f%.c}"
 gcc $s_file -o $file
-rm $s_file
+# rm $s_file

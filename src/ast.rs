@@ -40,6 +40,7 @@ pub enum Expression{
     UnaryOp(UnaryOp, Box<Expression>),
     BinaryOp(BinaryOp, Box<Expression>, Box<Expression>),
     Conditional(Box<Expression>, Box<Expression>, Box<Expression>),
+    FunCall(String, Vec<Expression>),
 }
 
 pub type OptionalExpression = Option<Expression>;
@@ -74,7 +75,8 @@ pub enum TopLevel {
     Function {
         fun_type: TypeDef,
         name: String,
-        body: Statement
+        parameters: Vec<String>,
+        body: Option<Vec<BlockItem>>
     }
 }
 

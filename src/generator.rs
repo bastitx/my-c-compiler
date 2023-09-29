@@ -143,6 +143,44 @@ fn generate_conditional_expression(exp1: &Expression, exp2: &Expression, exp3: &
     ].join("")
 }
 
+fn generate_function_call(name: &str, args: &[Expression], context: &Context) -> String {
+    if !context.is_function_in_scope(name, args.len()) {
+        panic!("Function {} with {} args is not in scope", name, args.len());
+    }
+    let args = args.into_iter().enumerate();
+    let args_len = args.len();
+    let stack_args = if args.len() > 6 {
+        args.clone().rev().take(args_len - 6).fold(String::new(), |acc, (_, x)| {
+            [
+                acc,
+                generate_expression(x, context),
+                String::from("\tpushq\t%rax\n"),
+            ].join("")
+        })
+    } else {
+        String::new()
+    };
+    let stack_args_cleanup = if args.len() > 6 {
+        let cleanup_len = args.len() - 6;
+        format!("\taddq\t${}, %rsp\n", 8 * cleanup_len)
+    } else {
+        String::new()
+    };
+    let register_args = args.take(6).rev().fold(String::new(), |acc, (i, x)| {
+        [
+            acc,
+            generate_expression(x, context),
+            format!("\tmovq\t%rax, {}\n", parameter_index_to_register(i)),
+        ].join("")
+    });
+    [
+        stack_args,
+        register_args,
+        format!("\tcall\t{}\n", name),
+        stack_args_cleanup
+    ].join("")
+}
+
 fn generate_expression(exp: &Expression, context: &Context) -> String {
     match exp {
         Expression::ConstExpression(c) => generate_const_expression(c),
@@ -159,6 +197,7 @@ fn generate_expression(exp: &Expression, context: &Context) -> String {
         Expression::Assign(name, exp) => generate_var_assignment(name, exp, context),
         Expression::Var(name) => generate_var_reference(name, context),
         Expression::Conditional(exp1, exp2, exp3) => generate_conditional_expression(exp1, exp2, exp3, context),
+        Expression::FunCall(name, parameters) => generate_function_call(name, parameters, context)
     }
 }
 
@@ -307,7 +346,10 @@ fn generate_statement(statement: &Statement, context: &Context) -> String {
         Statement::ReturnVal(exp) => generate_return_val(exp, context),
         Statement::Expression(exp) => generate_optional_expression(exp, context),
         Statement::Conditional(exp, if_statement, else_statement) => generate_if_else(exp, if_statement, else_statement, context),
-        Statement::Compound(block_items) => generate_block_items(block_items, context),
+        Statement::Compound(block_items) => {
+            let context = Context::new(Some(context));
+            generate_block_items(block_items, &context)
+        },
         Statement::For(exp1, exp2, exp3, statement) => generate_for_loop(exp1, exp2, exp3, statement, context),
         Statement::ForDecl(decl, exp2, exp3, statement) => generate_for_decl_loop(decl, exp2, exp3, statement, context),
         Statement::Break => generate_break(context),
@@ -330,33 +372,63 @@ fn generate_stack_cleanup(context: &Context) -> String {
 }
 
 fn generate_block_items(block_items: &[BlockItem], context: &Context) -> String {
-    let context = Context::new(Some(context));
     block_items.into_iter().fold(String::new(), |acc, x| {
         acc + &generate_block_item(&x, &context)
     }) + &generate_stack_cleanup(&context)
-
 }
 
-fn generate_function_body(body: &Statement, context: &Context) -> String {
+fn generate_function_body(body: &[BlockItem], context: &Context) -> String {
     // TODO remove the generate return val? It was added so that we return 0 when there is no return statement
-    generate_statement(body, context) + &generate_return_val(&Expression::ConstExpression(Const::Int(0)), context)
+    generate_block_items(body, context) + &generate_return_val(&Expression::ConstExpression(Const::Int(0)), context)
+}
+
+const fn parameter_index_to_register(i: usize) -> &'static str {
+    match i {
+        0 => "%rdi",
+        1 => "%rsi",
+        2 => "%rdx",
+        3 => "%rcx",
+        4 => "%r8",
+        5 => "%r9",
+        _ => panic!("Parameters at position 7 and above are on the stack")
+    }
+}
+
+fn generate_parameter_declarations(parameters: &[String], context: &Context) -> String {
+    if parameters.len() > 6 {
+        parameters[6..].into_iter().enumerate().for_each(|(i, x)| {
+            context.declare_var_with_offset(x, 16 + (i as i32) * 8);
+        });
+    }
+    parameters.into_iter().take(6).enumerate().fold(String::new(), |acc, (i, x)| {
+        context.declare_var(x);
+        acc + &format!("\tpushq\t{}\n", parameter_index_to_register(i))
+    })
 }
 
 fn generate_function(
     _: &TypeDef,
     name: &String,
-    body: &Statement,
+    parameters: &[String],
+    body: &Option<Vec<BlockItem>>,
     context: &Context,
 ) -> String {
-    [
-        format!("\t.global\t{}\n", name),
-        format!("\t.text\n"),
-        format!("{}:\n", name),
-        String::from("\tpush\t%rbp\n"),
-        String::from("\tmovq\t%rsp, %rbp\n"),
-        generate_function_body(body, context),
-    ]
-    .join("")
+    if let Some(body) = body {
+        context.define_function(name, parameters.len());
+        let context = Context::new_function(context);
+        [
+            format!("\t.global\t{}\n", name),
+            format!("{}:\n", name),
+            String::from("\tpushq\t%rbp\n"),
+            String::from("\tmovq\t%rsp, %rbp\n"),
+            generate_parameter_declarations(parameters, &context),
+            generate_function_body(body, &context),
+        ]
+        .join("")
+    } else {
+        context.declare_function(name, parameters.len());
+        String::new()
+    }
 }
 
 fn generate_top_level(tl: &TopLevel, context: &Context) -> String {
@@ -364,8 +436,9 @@ fn generate_top_level(tl: &TopLevel, context: &Context) -> String {
         TopLevel::Function {
             fun_type,
             name,
-            body,
-        } => generate_function(fun_type, name, body, context),
+            parameters,
+            body
+        } => generate_function(fun_type, name, parameters, body, context),
     }
 }
 
@@ -377,5 +450,8 @@ fn generate_top_levels(block: Vec<TopLevel>, context: &Context) -> String {
 
 pub fn generate(program: Program) -> String {
     let context = Context::new(None);
-    generate_top_levels(program.block, &context)
+    [
+        format!("\t.text\n"),
+        generate_top_levels(program.block, &context),
+    ].join("")
 }
